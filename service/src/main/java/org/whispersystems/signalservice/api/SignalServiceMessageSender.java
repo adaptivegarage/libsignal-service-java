@@ -57,6 +57,7 @@ import org.whispersystems.signalservice.api.push.SignalServiceAddress;
 import org.whispersystems.signalservice.api.push.exceptions.AuthorizationFailedException;
 import org.whispersystems.signalservice.api.push.exceptions.NonSuccessfulResponseCodeException;
 import org.whispersystems.signalservice.api.push.exceptions.PushNetworkException;
+import org.whispersystems.signalservice.api.push.exceptions.ServerRejectedException;
 import org.whispersystems.signalservice.api.push.exceptions.UnregisteredUserException;
 import org.whispersystems.signalservice.api.util.CredentialsProvider;
 import org.whispersystems.signalservice.internal.configuration.SignalServiceConfiguration;
@@ -313,19 +314,6 @@ public class SignalServiceMessageSender {
     if (result.getSuccess() != null && result.getSuccess().isNeedsSync()) {
       byte[] syncMessage = createMultiDeviceSentTranscriptContent(content, Optional.of(recipient), timestamp, Collections.singletonList(result), false);
       sendMessage(localAddress, Optional.<UnidentifiedAccess>absent(), timestamp, syncMessage, false, null);
-    }
-
-    if (message.isEndSession()) {
-      if (recipient.getUuid().isPresent()) {
-        store.deleteAllSessions(recipient.getUuid().get().toString());
-      }
-      if (recipient.getNumber().isPresent()) {
-        store.deleteAllSessions(recipient.getNumber().get());
-      }
-
-      if (eventListener.isPresent()) {
-        eventListener.get().onSecurityEvent(recipient);
-      }
     }
 
     return result;
@@ -590,7 +578,6 @@ public class SignalServiceMessageSender {
     byte[] expandedKey = new HKDFv3().deriveSecrets(packKey, "Sticker Pack".getBytes(), 64);
     socket.uploadStickerContent(data, length, expandedKey, stickerUploadAttributes);
   }
-
   private void sendMessage(VerifiedMessage message, Optional<UnidentifiedAccessPair> unidentifiedAccess)
       throws IOException, UntrustedIdentityException
   {
@@ -614,6 +601,26 @@ public class SignalServiceMessageSender {
       byte[] syncMessage = createMultiDeviceVerifiedContent(message, nullMessage.toByteArray());
       sendMessage(localAddress, Optional.<UnidentifiedAccess>absent(), message.getTimestamp(), syncMessage, false, null);
     }
+  }
+
+  public SendMessageResult sendNullMessage(SignalServiceAddress address, Optional<UnidentifiedAccessPair> unidentifiedAccess)
+      throws UntrustedIdentityException, IOException
+  {
+    byte[] nullMessageBody = DataMessage.newBuilder()
+                                        .setBody(Base64.encodeBytes(Util.getRandomLengthBytes(140)))
+                                        .build()
+                                        .toByteArray();
+
+    NullMessage nullMessage = NullMessage.newBuilder()
+                                         .setPadding(ByteString.copyFrom(nullMessageBody))
+                                         .build();
+
+    byte[] content = Content.newBuilder()
+                            .setNullMessage(nullMessage)
+                            .build()
+                            .toByteArray();
+
+    return sendMessage(address, getTargetUnidentifiedAccess(unidentifiedAccess), System.currentTimeMillis(), content, false, null);
   }
 
   private byte[] createTypingContent(SignalServiceTypingMessage message) {
@@ -1455,6 +1462,9 @@ public class SignalServiceMessageSender {
         } else if (e.getCause() instanceof PushNetworkException) {
           Log.w(TAG, e);
           results.add(SendMessageResult.networkFailure(recipient));
+        } else if (e.getCause() instanceof ServerRejectedException) {
+          Log.w(TAG, e);
+          throw ((ServerRejectedException) e.getCause());
         } else {
           throw new IOException(e);
         }

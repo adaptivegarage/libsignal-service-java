@@ -28,6 +28,7 @@ import org.whispersystems.signalservice.api.messages.calls.SignalServiceCallMess
 import org.whispersystems.signalservice.api.messages.multidevice.BlockedListMessage;
 import org.whispersystems.signalservice.api.messages.multidevice.ConfigurationMessage;
 import org.whispersystems.signalservice.api.messages.multidevice.ContactsMessage;
+import org.whispersystems.signalservice.api.messages.multidevice.KeysMessage;
 import org.whispersystems.signalservice.api.messages.multidevice.MessageRequestResponseMessage;
 import org.whispersystems.signalservice.api.messages.multidevice.ReadMessage;
 import org.whispersystems.signalservice.api.messages.multidevice.RequestMessage;
@@ -38,6 +39,7 @@ import org.whispersystems.signalservice.api.messages.multidevice.VerifiedMessage
 import org.whispersystems.signalservice.api.messages.multidevice.ViewOnceOpenMessage;
 import org.whispersystems.signalservice.api.messages.shared.SharedContact;
 import org.whispersystems.signalservice.api.push.SignalServiceAddress;
+import org.whispersystems.signalservice.api.storage.StorageKey;
 import org.whispersystems.signalservice.api.util.UuidUtil;
 import org.whispersystems.signalservice.internal.push.SignalServiceProtos;
 import org.whispersystems.signalservice.internal.push.SignalServiceProtos.AttachmentPointer;
@@ -630,6 +632,13 @@ public final class SignalServiceContent {
                       pointer.hasUploadTimestamp() ? pointer.getUploadTimestamp() : 0
               )
       );
+    }
+
+    if (content.hasKeys()) {
+      final SignalServiceProtos.SyncMessage.Keys keys = content.getKeys();
+      return SignalServiceSyncMessage.forKeys(new KeysMessage(
+          keys.hasStorageService() ? Optional.of(new StorageKey(keys.getStorageService().toByteArray())) : Optional.absent()
+      ));
     }
 
     return SignalServiceSyncMessage.empty();

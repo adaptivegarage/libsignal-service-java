@@ -81,9 +81,10 @@ public class SignalServiceMessageReceiver {
                                       String signalingKey, String userAgent,
                                       ConnectivityListener listener,
                                       SleepTimer timer,
-                                      ClientZkProfileOperations clientZkProfileOperations)
+                                      ClientZkProfileOperations clientZkProfileOperations,
+                                      boolean automaticNetworkRetry)
   {
-    this(urls, new StaticCredentialsProvider(uuid, e164, password, signalingKey, deviceId), userAgent, listener, timer, clientZkProfileOperations);
+    this(urls, new StaticCredentialsProvider(uuid, e164, password, signalingKey, deviceId), userAgent, listener, timer, clientZkProfileOperations, automaticNetworkRetry);
   }
   
   /**
@@ -100,9 +101,10 @@ public class SignalServiceMessageReceiver {
                                       String signalingKey, String signalAgent,
                                       ConnectivityListener listener,
                                       SleepTimer timer,
-                                      ClientZkProfileOperations clientZkProfileOperations)
+                                      ClientZkProfileOperations clientZkProfileOperations,
+                                      boolean automaticNetworkRetry)
   {
-    this(urls, new StaticCredentialsProvider(uuid, e164, password, signalingKey, SignalServiceAddress.DEFAULT_DEVICE_ID), signalAgent, listener, timer, clientZkProfileOperations);
+    this(urls, new StaticCredentialsProvider(uuid, e164, password, signalingKey, SignalServiceAddress.DEFAULT_DEVICE_ID), signalAgent, listener, timer, clientZkProfileOperations, automaticNetworkRetry);
   }
 
   /**
@@ -116,11 +118,12 @@ public class SignalServiceMessageReceiver {
                                       String signalAgent,
                                       ConnectivityListener listener,
                                       SleepTimer timer,
-                                      ClientZkProfileOperations clientZkProfileOperations)
+                                      ClientZkProfileOperations clientZkProfileOperations,
+                                      boolean automaticNetworkRetry)
   {
     this.urls                      = urls;
     this.credentialsProvider       = credentials;
-    this.socket                    = new PushServiceSocket(urls, credentials, signalAgent, clientZkProfileOperations);
+    this.socket                    = new PushServiceSocket(urls, credentials, signalAgent, clientZkProfileOperations, automaticNetworkRetry);
     this.signalAgent               = signalAgent;
     this.connectivityListener      = listener;
     this.sleepTimer                = timer;

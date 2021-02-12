@@ -9,15 +9,13 @@ public class DynamicCredentialsProvider implements CredentialsProvider {
   private UUID   uuid;
   private String e164;
   private String password;
-  private String signalingKey;
   private int deviceId;
   
-  public DynamicCredentialsProvider(UUID uuid, String e164, String password, String signalingKey, int deviceId) {
+  public DynamicCredentialsProvider(UUID uuid, String e164, String password, int deviceId) {
     super();
     this.uuid = uuid;
     this.e164 = e164;
     this.password = password;
-    this.signalingKey = signalingKey;
     this.deviceId = deviceId;
   }
 
@@ -46,15 +44,6 @@ public class DynamicCredentialsProvider implements CredentialsProvider {
 
   public void setPassword(String password) {
     this.password = password;
-  }
-
-  @Override
-  public String getSignalingKey() {
-    return signalingKey;
-  }
-
-  public void setSignalingKey(String signalingKey) {
-    this.signalingKey = signalingKey;
   }
 
   @Override

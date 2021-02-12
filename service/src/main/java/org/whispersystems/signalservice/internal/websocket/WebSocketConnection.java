@@ -10,7 +10,9 @@ import org.whispersystems.signalservice.api.push.TrustStore;
 import org.whispersystems.signalservice.api.util.CredentialsProvider;
 import org.whispersystems.signalservice.api.util.SleepTimer;
 import org.whispersystems.signalservice.api.util.Tls12SocketFactory;
+import org.whispersystems.signalservice.api.util.TlsProxySocketFactory;
 import org.whispersystems.signalservice.api.websocket.ConnectivityListener;
+import org.whispersystems.signalservice.internal.configuration.SignalProxy;
 import org.whispersystems.signalservice.internal.util.BlacklistingTrustManager;
 import org.whispersystems.signalservice.internal.util.Util;
 import org.whispersystems.signalservice.internal.util.concurrent.ListenableFuture;
@@ -64,6 +66,7 @@ public class WebSocketConnection extends WebSocketListener {
   private final SleepTimer                    sleepTimer;
   private final List<Interceptor>             interceptors;
   private final Optional<Dns>                 dns;
+  private final Optional<SignalProxy>         signalProxy;
 
   private OkHttpClient        okHttpClient;
   private WebSocket           client;
@@ -78,7 +81,8 @@ public class WebSocketConnection extends WebSocketListener {
                              ConnectivityListener listener,
                              SleepTimer timer,
                              List<Interceptor> interceptors,
-                             Optional<Dns> dns)
+                             Optional<Dns> dns,
+                             Optional<SignalProxy> signalProxy)
   {
     this.trustStore          = trustStore;
     this.credentialsProvider = credentialsProvider;
@@ -87,6 +91,7 @@ public class WebSocketConnection extends WebSocketListener {
     this.sleepTimer          = timer;
     this.interceptors        = interceptors;
     this.dns                 = dns;
+    this.signalProxy         = signalProxy;
     this.attempts            = 0;
     this.connected           = false;
 
@@ -97,7 +102,8 @@ public class WebSocketConnection extends WebSocketListener {
   }
   
   public WebSocketConnection(String httpUri, TrustStore trustStore, String signalAgent, ConnectivityListener listener,
-                             SleepTimer timer, List<Interceptor> interceptors, Optional<Dns> dns) {
+                             SleepTimer timer, List<Interceptor> interceptors, Optional<Dns> dns,
+                             Optional<SignalProxy> signalProxy) {
     this.trustStore          = trustStore;
     this.credentialsProvider = Optional.absent();
     this.signalAgent         = signalAgent;
@@ -105,6 +111,7 @@ public class WebSocketConnection extends WebSocketListener {
     this.sleepTimer          = timer;
     this.interceptors        = interceptors;
     this.dns                 = dns;
+    this.signalProxy         = signalProxy;
     this.attempts            = 0;
     this.connected           = false;
     this.wsUri               = httpUri.replace("https://", "wss://")
@@ -137,6 +144,10 @@ public class WebSocketConnection extends WebSocketListener {
 
       for (Interceptor interceptor : interceptors) {
         clientBuilder.addInterceptor(interceptor);
+      }
+
+      if (signalProxy.isPresent()) {
+        clientBuilder.socketFactory(new TlsProxySocketFactory(signalProxy.get().getHost(), signalProxy.get().getPort(), dns));
       }
 
       this.okHttpClient = clientBuilder.build();
@@ -320,7 +331,15 @@ public class WebSocketConnection extends WebSocketListener {
     Log.w(TAG, "onFailure()", t);
 
     if (response != null && (response.code() == 401 || response.code() == 403)) {
-      if (listener != null) listener.onAuthenticationFailure();
+      if (listener != null) {
+        listener.onAuthenticationFailure();
+      }
+    } else if (listener != null) {
+      boolean shouldRetryConnection = listener.onGenericFailure(response, t);
+      if (!shouldRetryConnection) {
+        Log.w(TAG, "Experienced a failure, and the listener indicated we should not retry the connection. Disconnecting.");
+        disconnect();
+      }
     }
 
     if (client != null) {

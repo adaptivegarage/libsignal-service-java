@@ -133,7 +133,7 @@ public class SignalServiceAccountManager {
                                      SleepTimer timer)
   {
     this(configuration,
-         new DynamicCredentialsProvider(uuid, e164, password, null, deviceId),
+         new DynamicCredentialsProvider(uuid, e164, password, deviceId),
          signalAgent,
          new GroupsV2Operations(ClientZkOperations.create(configuration)),
          automaticNetworkRetry,
@@ -630,7 +630,6 @@ public class SignalServiceAccountManager {
    * Finishes a registration as a new device. Called by the new device.<br>
    * This method blocks until the already verified device has verified this device.
    * @param tempIdentity A temporary identity. Must be the same as the one given to the already verified device.
-   * @param signalingKey 52 random bytes.  A 32 byte AES key and a 20 byte Hmac256 key, concatenated.
    * @param supportsSms A boolean which indicates whether this device can receive SMS to the account's number.
    * @param fetchesMessages A boolean which indicates whether this device fetches messages.
    * @param registrationId A random integer generated at install time.
@@ -640,7 +639,7 @@ public class SignalServiceAccountManager {
    * @throws IOException
    * @throws InvalidKeyException
    */
-  public NewDeviceRegistrationReturn finishNewDeviceRegistration(IdentityKeyPair tempIdentity, String signalingKey, boolean supportsSms, boolean fetchesMessages, int registrationId, String deviceName) throws TimeoutException, IOException, InvalidKeyException {
+  public NewDeviceRegistrationReturn finishNewDeviceRegistration(IdentityKeyPair tempIdentity, boolean supportsSms, boolean fetchesMessages, int registrationId, String deviceName) throws TimeoutException, IOException, InvalidKeyException {
     ProvisionMessage msg = provisioningSocket.getProvisioningMessage(tempIdentity);
     credentialsProvider.setE164(msg.getNumber());
     UUID uuid = UuidUtil.parseOrNull(msg.getUuid());
@@ -659,7 +658,7 @@ public class SignalServiceAccountManager {
     final byte[] privateKeyBytes = msg.getIdentityKeyPrivate().toByteArray();
     ECPrivateKey privateKey = Curve.decodePrivatePoint(privateKeyBytes);
     IdentityKeyPair identity = new IdentityKeyPair(new IdentityKey(publicKey), privateKey);
-    int deviceId = this.pushServiceSocket.finishNewDeviceRegistration(provisioningCode, signalingKey, supportsSms, fetchesMessages, registrationId, deviceName);
+    int deviceId = this.pushServiceSocket.finishNewDeviceRegistration(provisioningCode, supportsSms, fetchesMessages, registrationId, deviceName);
     credentialsProvider.setDeviceId(deviceId);
     return new NewDeviceRegistrationReturn(identity, deviceId, msg.getNumber(), uuid, msg.hasProfileKey() ? msg.getProfileKey().toByteArray() : null, msg.hasReadReceipts() && msg.getReadReceipts());
   }
@@ -711,6 +710,10 @@ public class SignalServiceAccountManager {
 
   public TurnServerInfo getTurnServerInfo() throws IOException {
     return this.pushServiceSocket.getTurnServerInfo();
+  }
+
+  public void checkNetworkConnection() throws IOException {
+    this.pushServiceSocket.pingStorageService();
   }
 
   /**

@@ -98,12 +98,12 @@ uploadArchives {
             name archivesBaseName
             packaging 'jar'
             description 'Signal Service communication library for Java, unofficial fork'
-            url 'https://github.com/Turasa/libsignal-service-java'
+            url 'https://github.com/adaptivegarage/libsignal-service-java'
 
             scm {
-                url 'scm:git@github.com:Turasa/libsignal-service-java.git'
-                connection 'scm:git@github.com:Turasa/libsignal-service-java.git'
-                developerConnection 'scm:git@github.com:Turasa/libsignal-service-java.git'
+                url 'scm:git@github.com:adaptivegarage/libsignal-service-java.git'
+                connection 'scm:git@github.com:adaptivegarage/libsignal-service-java.git'
+                developerConnection 'scm:git@github.com:adaptivegarage/libsignal-service-java.git'
             }
 
             licenses {

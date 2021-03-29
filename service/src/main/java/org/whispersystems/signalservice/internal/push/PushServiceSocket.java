@@ -417,6 +417,8 @@ public class PushServiceSocket {
     try {
       String responseText = makeServiceRequest(String.format(MESSAGE_PATH, bundle.getDestination()), "PUT", JsonUtil.toJson(bundle), NO_HEADERS, unidentifiedAccess);
 
+      Log.i(TAG, "sendMessage():\n" + responseText);
+
       if (responseText == null) return new SendMessageResponse(false);
       else                      return JsonUtil.fromJson(responseText, SendMessageResponse.class);
     } catch (NotFoundException nfe) {

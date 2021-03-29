@@ -100,7 +100,7 @@ public class WebSocketConnection extends WebSocketListener {
     if (credentialsProvider.isPresent()) this.wsUri = uri + "/v1/websocket/?login=%s&password=%s";
     else                                 this.wsUri = uri + "/v1/websocket/";
   }
-  
+
   public WebSocketConnection(String httpUri, TrustStore trustStore, String signalAgent, ConnectivityListener listener,
                              SleepTimer timer, List<Interceptor> interceptors, Optional<Dns> dns,
                              Optional<SignalProxy> signalProxy) {
@@ -212,6 +212,8 @@ public class WebSocketConnection extends WebSocketListener {
 
     SettableFuture<WebsocketResponse> future = new SettableFuture<>();
     outgoingRequests.put(request.getId(), new OutgoingRequest(future, System.currentTimeMillis()));
+
+    Log.i(TAG, "sendRequest():\n" + message);
 
     if (!client.send(ByteString.of(message.toByteArray()))) {
       throw new IOException("Write failed!");

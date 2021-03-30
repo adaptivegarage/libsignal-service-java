@@ -213,7 +213,7 @@ public class WebSocketConnection extends WebSocketListener {
     SettableFuture<WebsocketResponse> future = new SettableFuture<>();
     outgoingRequests.put(request.getId(), new OutgoingRequest(future, System.currentTimeMillis()));
 
-    Log.i(TAG, "sendRequest():\n" + message);
+    Log.v(TAG, "sendRequest():\n" + message);
 
     if (!client.send(ByteString.of(message.toByteArray()))) {
       throw new IOException("Write failed!");

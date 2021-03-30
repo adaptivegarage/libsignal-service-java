@@ -11,6 +11,11 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.MessageLite;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParser;
+import okio.Buffer;
 import org.signal.storageservice.protos.groups.AvatarUploadAttributes;
 import org.signal.storageservice.protos.groups.Group;
 import org.signal.storageservice.protos.groups.GroupChange;
@@ -121,17 +126,10 @@ import java.io.UnsupportedEncodingException;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import javax.net.SocketFactory;
 import javax.net.ssl.SSLContext;
@@ -182,7 +180,7 @@ public class PushServiceSocket {
   private static final String PREKEY_PATH               = "/v2/keys/%s";
   private static final String PREKEY_DEVICE_PATH        = "/v2/keys/%s/%s";
   private static final String SIGNED_PREKEY_PATH        = "/v2/keys/signed";
-  
+
   private static final String PROVISIONING_CODE_PATH    = "/v1/devices/provisioning/code";
   private static final String PROVISIONING_MESSAGE_PATH = "/v1/provisioning/%s";
   private static final String DEVICE_PATH               = "/v1/devices/%s";
@@ -416,8 +414,6 @@ public class PushServiceSocket {
   {
     try {
       String responseText = makeServiceRequest(String.format(MESSAGE_PATH, bundle.getDestination()), "PUT", JsonUtil.toJson(bundle), NO_HEADERS, unidentifiedAccess);
-
-      Log.i(TAG, "sendMessage():\n" + responseText);
 
       if (responseText == null) return new SendMessageResponse(false);
       else                      return JsonUtil.fromJson(responseText, SendMessageResponse.class);
@@ -1387,7 +1383,27 @@ public class PushServiceSocket {
   {
     ResponseBody responseBody = makeServiceBodyRequest(urlFragment, method, jsonRequestBody(jsonBody), headers, responseCodeHandler, unidentifiedAccessKey);
     try {
-      return responseBody.string();
+      String res = responseBody.string();
+
+      // Log incoming response body
+      if (System.getProperty("org.slf4j.simpleLogger.defaultLogLevel") == "trace" && res != "") {
+        String prettyRes = "";
+        Gson gson = new GsonBuilder().setPrettyPrinting().create();
+        try {
+          prettyRes = gson.toJson(JsonParser.parseString(res));
+        } catch (com.google.gson.JsonParseException e) {
+          prettyRes = res;
+        }
+        Log.v(TAG, new StringBuilder()
+                .append("makeServiceRequest() returned response body:\n\n")
+                .append("Received response\n")
+                .append("-----------------\n")
+                .append(String.format("responseBody:\n%s\n", prettyRes))
+                .toString()
+        );
+      }
+
+      return res;
     } catch (IOException e) {
       throw new PushNetworkException(e);
     }
@@ -1517,12 +1533,70 @@ public class PushServiceSocket {
       OkHttpClient okHttpClient = buildOkHttpClient(unidentifiedAccess.isPresent());
       Call         call         = okHttpClient.newCall(buildServiceRequest(urlFragment, method, body, headers, unidentifiedAccess));
 
+      // Log outgoing request
+      if (System.getProperty("org.slf4j.simpleLogger.defaultLogLevel") == "trace") {
+        String prettyBody = "";
+        if (body != null) {
+          Buffer buffer = new Buffer();
+          body.writeTo(buffer);
+          String rawBody = buffer.readUtf8();
+          Gson gson = new GsonBuilder().setPrettyPrinting().create();
+          try {
+            prettyBody = gson.toJson(JsonParser.parseString(rawBody));
+          } catch (com.google.gson.JsonParseException e) {
+            prettyBody = rawBody;
+          }
+        }
+        final String headersAsString = headers
+                .keySet()
+                .stream()
+                .map(key -> String.format("%s = %s", key, headers.get(key)))
+                .collect(Collectors.joining(", ", "{", "}"));
+        String accesskey;
+        try {
+          accesskey = Base64.encodeBytes(unidentifiedAccess.get().getUnidentifiedAccessKey());
+        } catch (NoSuchElementException | IllegalStateException e) {
+          accesskey = "";
+        }
+        String cert;
+        try {
+          cert = Base64.encodeBytes(unidentifiedAccess.get().getUnidentifiedCertificate().getCertificate());
+        } catch (NoSuchElementException | IllegalStateException e) {
+          cert = "";
+        }
+        Log.v(TAG, new StringBuilder()
+                .append("getServiceConnection() calling OkHttpClient with:\n\n")
+                .append("Sent request\n")
+                .append("------------\n")
+                .append(String.format("requestUrl: %s\n", urlFragment))
+                .append(String.format("method: %s\n", method))
+                .append(String.format("headers: %s\n", headersAsString))
+                .append(String.format("requestBody:\n%s\n", prettyBody))
+                .append(String.format("unidentifiedAccessKey: %s\n", accesskey))
+                .append(String.format("unidentifiedCertificate: %s\n", cert))
+                .toString()
+        );
+      }
+
       synchronized (connections) {
         connections.add(call);
       }
 
       try {
-        return call.execute();
+        Response res = call.execute();
+
+        // Log incoming response message
+        if (res.message() != "") {
+          Log.v(TAG, new StringBuilder()
+                  .append("getServiceConnection() returned response message:\n\n")
+                  .append("Received response\n")
+                  .append("-----------------\n")
+                  .append(String.format("responseMessage: %s\n", res.message()))
+                  .toString()
+          );
+        }
+
+        return res;
       } finally {
         synchronized (connections) {
           connections.remove(call);

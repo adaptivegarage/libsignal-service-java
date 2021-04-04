@@ -13,7 +13,6 @@ import com.google.protobuf.MessageLite;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import okio.Buffer;
 import org.signal.storageservice.protos.groups.AvatarUploadAttributes;
@@ -131,7 +130,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-import javax.net.SocketFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
@@ -1531,26 +1529,36 @@ public class PushServiceSocket {
   {
     try {
       OkHttpClient okHttpClient = buildOkHttpClient(unidentifiedAccess.isPresent());
-      Call         call         = okHttpClient.newCall(buildServiceRequest(urlFragment, method, body, headers, unidentifiedAccess));
+      Request request = buildServiceRequest(urlFragment, method, body, headers, unidentifiedAccess);
+      Call call = okHttpClient.newCall(request);
 
       // Log outgoing request
       if (System.getProperty("org.slf4j.simpleLogger.defaultLogLevel") == "trace") {
+        String ctype = "";
+        try {
+          ctype = request.body().contentType().toString();
+        }
+        catch (NullPointerException e) {}
         String prettyBody = "";
-        if (body != null) {
-          Buffer buffer = new Buffer();
-          body.writeTo(buffer);
-          String rawBody = buffer.readUtf8();
-          Gson gson = new GsonBuilder().setPrettyPrinting().create();
-          try {
-            prettyBody = gson.toJson(JsonParser.parseString(rawBody));
-          } catch (com.google.gson.JsonParseException e) {
-            prettyBody = rawBody;
+        try {
+          if (request.body().contentLength() > 0) {
+            Buffer buffer = new Buffer();
+            request.body().writeTo(buffer);
+            String rawBody = buffer.readUtf8();
+            Gson gson = new GsonBuilder().setPrettyPrinting().create();
+            try {
+              prettyBody = gson.toJson(JsonParser.parseString(rawBody));
+            }
+            catch (com.google.gson.JsonParseException e) {
+              prettyBody = rawBody;
+            }
           }
         }
-        final String headersAsString = headers
+        catch (NullPointerException e) {}
+        final String headersAsString = request.headers().toMultimap()
                 .keySet()
                 .stream()
-                .map(key -> String.format("%s = %s", key, headers.get(key)))
+                .map(key -> String.format("%s = %s", key, request.headers().toMultimap().get(key)))
                 .collect(Collectors.joining(", ", "{", "}"));
         String accesskey;
         try {
@@ -1565,12 +1573,13 @@ public class PushServiceSocket {
           cert = "";
         }
         Log.v(TAG, new StringBuilder()
-                .append("getServiceConnection() calling OkHttpClient with:\n\n")
+                .append("getServiceConnection() calling OkHttpClient client with:\n\n")
                 .append("Sent request\n")
                 .append("------------\n")
-                .append(String.format("requestUrl: %s\n", urlFragment))
-                .append(String.format("method: %s\n", method))
+                .append(String.format("requestUrl: %s\n", request.url()))
+                .append(String.format("method: %s\n", request.method()))
                 .append(String.format("headers: %s\n", headersAsString))
+                .append(String.format("contentType: %s\n", ctype))
                 .append(String.format("requestBody:\n%s\n", prettyBody))
                 .append(String.format("unidentifiedAccessKey: %s\n", accesskey))
                 .append(String.format("unidentifiedCertificate: %s\n", cert))

@@ -5,9 +5,14 @@
  */
 package org.whispersystems.signalservice.api;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonParser;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
 
+import com.google.protobuf.MessageLite;
+import okio.Buffer;
 import org.signal.zkgroup.profiles.ClientZkProfileOperations;
 import org.whispersystems.libsignal.InvalidKeyException;
 import org.whispersystems.libsignal.SessionBuilder;
@@ -92,6 +97,7 @@ import org.whispersystems.signalservice.internal.push.http.AttachmentCipherOutpu
 import org.whispersystems.signalservice.internal.push.http.CancelationSignal;
 import org.whispersystems.signalservice.internal.push.http.ResumableUploadSpec;
 import org.whispersystems.signalservice.internal.sticker.StickerProtos;
+import org.whispersystems.signalservice.internal.util.JsonUtil;
 import org.whispersystems.signalservice.internal.util.StaticCredentialsProvider;
 import org.whispersystems.signalservice.internal.util.Util;
 import org.whispersystems.util.Base64;
@@ -99,15 +105,10 @@ import org.whispersystems.util.Base64;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -116,6 +117,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 /**
  * The main interface for sending Signal Service messages.
@@ -856,7 +858,22 @@ public class SignalServiceMessageSender {
 
     builder.setTimestamp(message.getTimestamp());
 
-    return enforceMaxContentSize(container.setDataMessage(builder).build().toByteArray());
+    final MessageLite messageLite = container.setDataMessage(builder).build();
+
+    // Log message after building
+    if (System.getProperty("org.slf4j.simpleLogger.defaultLogLevel") == "trace") {
+      // String msg = JsonUtil.toJson(messageLite);
+      String msg = messageLite.getParserForType().parseFrom(messageLite.toByteArray()).toString();
+      Log.v(TAG, new StringBuilder()
+              .append("createMessageContent()\n\n")
+              .append("Building message\n")
+              .append("----------------\n")
+              .append(String.format("MessageLite:\n%s\n", msg))
+              .toString()
+      );
+    }
+
+    return enforceMaxContentSize(messageLite.toByteArray());
   }
 
   private byte[] createCallContent(SignalServiceCallMessage callMessage) {
@@ -1726,7 +1743,35 @@ public class SignalServiceMessageSender {
     }
 
     try {
-      return cipher.encrypt(signalProtocolAddress, unidentifiedAccess, plaintext);
+      OutgoingPushMessage output = cipher.encrypt(signalProtocolAddress, unidentifiedAccess, plaintext);
+
+      // Log message before encryption
+      if (System.getProperty("org.slf4j.simpleLogger.defaultLogLevel") == "trace") {
+        String accesskey;
+        try {
+          accesskey = Base64.encodeBytes(unidentifiedAccess.get().getUnidentifiedAccessKey());
+        } catch (NoSuchElementException | IllegalStateException e) {
+          accesskey = "";
+        }
+        Log.v(TAG, new StringBuilder()
+                .append("getEncryptedMessage()\n\n")
+                .append("Encrypting OutgoingPushMessage\n")
+                .append("------------------------------\n")
+                .append(String.format("(recipientNumber): %s\n", recipient.getNumber().orNull()))
+                .append(String.format("(recipientUuid): %s\n", recipient.getUuid().orNull()))
+                .append(String.format("(recipientRelay): %s\n", recipient.getRelay().orNull()))
+                .append(String.format("(recipientHashcode): %s\n", recipient.hashCode()))
+                .append(String.format("┌recipientIdentifier: %s\n", recipient.getIdentifier()))
+                .append(String.format("├deviceId: %d\n", deviceId))
+                .append(String.format("└─┬signalProtocolAddress: %s\n", signalProtocolAddress.toString()))
+                .append(String.format("  ├unidentifiedAccess: %s\n", accesskey))
+                .append(String.format("  ├plaintextMessage: <MessageLite>\n"))
+                .append(String.format("  └──OutgoingPushMessage: %s\n", JsonUtil.toJson(output)))
+                .toString()
+        );
+      }
+
+      return output;
     } catch (org.whispersystems.libsignal.UntrustedIdentityException e) {
       throw new UntrustedIdentityException("Untrusted on send", recipient.getIdentifier(), e.getUntrustedIdentity());
     }

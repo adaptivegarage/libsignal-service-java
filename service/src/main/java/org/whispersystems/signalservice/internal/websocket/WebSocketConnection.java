@@ -1,7 +1,11 @@
 package org.whispersystems.signalservice.internal.websocket;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonParser;
 import com.google.protobuf.InvalidProtocolBufferException;
 
+import okio.Buffer;
 import org.whispersystems.libsignal.logging.Log;
 import org.whispersystems.libsignal.util.Pair;
 import org.whispersystems.libsignal.util.guava.Optional;
@@ -24,15 +28,12 @@ import org.whispersystems.signalservice.internal.websocket.WebSocketProtos.WebSo
 import java.io.IOException;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSocketFactory;
@@ -213,7 +214,31 @@ public class WebSocketConnection extends WebSocketListener {
     SettableFuture<WebsocketResponse> future = new SettableFuture<>();
     outgoingRequests.put(request.getId(), new OutgoingRequest(future, System.currentTimeMillis()));
 
-    Log.v(TAG, "sendRequest():\n" + message);
+    // Log outgoing request
+    if (System.getProperty("org.slf4j.simpleLogger.defaultLogLevel") == "trace") {
+      String prettyBody = "";
+      if (request.hasBody()) {
+        String rawBody = String.valueOf(request.getBody());
+        Gson gson = new GsonBuilder().setPrettyPrinting().create();
+        try {
+          prettyBody = gson.toJson(JsonParser.parseString(rawBody));
+        } catch (com.google.gson.JsonParseException e) {
+          prettyBody = rawBody;
+        }
+      }
+      Log.v(TAG, new StringBuilder()
+              .append("sendRequest() calling WebSocket client with:\n\n")
+              .append("Sent request\n")
+              .append("------------\n")
+              .append(String.format("requestUrl: %s\n", request.getPath()))
+              .append(String.format("method: %s\n", request.getVerb()))
+              .append(String.format("headers: %s%s%s\n", "{", String.join(", ", request.getHeadersList()), "}"))
+              .append(String.format("id: %d\n", request.getId()))
+              .append(String.format("requestBody:\n%s\n", prettyBody))
+              .append(String.format("message:\n%s\n", message))
+              .toString()
+      );
+    }
 
     if (!client.send(ByteString.of(message.toByteArray()))) {
       throw new IOException("Write failed!");
